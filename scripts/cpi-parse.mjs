@@ -72,6 +72,7 @@ function rowText(row, cols) {
 export function selectBaseIndex(rows, { preferBase = '2015' } = {}) {
   if (rows.length === 0) throw new Error('CSV nemá žádné datové řádky');
   const cols = Object.keys(rows[0]);
+  if (cols.includes('typudaje4a')) return selectBaseIndexDataStat(rows, cols, preferBase);
   const valCol = pick(cols, ['hodnota', 'value']);
   if (!valCol) throw new Error(`Chybí sloupec "hodnota" (sloupce: ${cols.join(', ')})`);
   const typeCol = pick(cols, ['casz_kod']);
@@ -145,6 +146,42 @@ export function selectBaseIndex(rows, { preferBase = '2015' } = {}) {
   }
   if (Object.keys(values).length === 0) throw new Error('Bazický index nemá žádné měsíční hodnoty');
   return { base, values };
+}
+
+/**
+ * Formát DataStat (sada CEN0101E na data.csu.gov.cz, od 2026). Sloupce s kódy:
+ *   TYPUDAJE4A = IZ2015 (bazický index 2015 = 100), IZ2025, IV202512, IR (meziroční) …
+ *   CZCOICOP2.CZCOP1 = "0" a CZCOICOP2.CZCOP23 = "" → úhrn spotřebního koše
+ *   EKAKTIOCDS = "0" (domácnosti celkem), UZ02P = "CZ" (Česko), IndicatorType = 6134
+ *   CASMKMQRM12 = "RRRR-MM" pro měsíc (RRRR-MMK = kumulace, RRRR-Qn, RRRR se přeskočí)
+ */
+function selectBaseIndexDataStat(rows, cols, preferBase) {
+  const need = ['hodnota', 'casmkmqrm12', 'czcoicop2.czcop1'];
+  const missing = need.filter((c) => !cols.includes(c));
+  if (missing.length) throw new Error(`Formát DataStat: chybí sloupce ${missing.join(', ')}`);
+  const has = (c) => cols.includes(c);
+  const byBase = new Map();
+  for (const r of rows) {
+    const m = /^IZ(\d{4})$/.exec(r.typudaje4a);
+    if (!m) continue; // jen bazické indexy s průměrem roku = 100
+    if (has('indicatortype') && r.indicatortype !== '6134') continue;
+    if (r['czcoicop2.czcop1'] !== '0') continue;
+    if (has('czcoicop2.czcop23') && r['czcoicop2.czcop23'] !== '') continue;
+    if (has('ekaktiocds') && r.ekaktiocds !== '0') continue;
+    if (has('uz02p') && r.uz02p !== 'CZ') continue;
+    if (!/^\d{4}-\d{2}$/.test(r.casmkmqrm12)) continue;
+    const v = parseNumber(r.hodnota);
+    if (!Number.isFinite(v)) continue;
+    if (!byBase.has(m[1])) byBase.set(m[1], {});
+    const values = byBase.get(m[1]);
+    if (r.casmkmqrm12 in values && values[r.casmkmqrm12] !== v) {
+      throw new Error(`Pro ${r.casmkmqrm12} vyšlo víc různých hodnot – filtr není jednoznačný`);
+    }
+    values[r.casmkmqrm12] = v;
+  }
+  if (byBase.size === 0) throw new Error('V CSV (DataStat) jsem nenašel bazický index za úhrn spotřebního koše');
+  const base = byBase.has(preferBase) ? preferBase : [...byBase.keys()].sort().at(-1);
+  return { base, values: sortMap(byBase.get(base)) };
 }
 
 /**

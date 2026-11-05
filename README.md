@@ -25,6 +25,10 @@ Výpočet je orientační: index popisuje průměrný spotřební koš domácnos
   V souboru 010022-25 to jsou řádky `stapro_kod = 6134`, `casz_kod = Z` (bazický index),
   `bazobdobiod = 2015-01-01` a `bazobdobido = 2015-12-31` (průměr roku 2015) a prázdný `ucel_kod`
   (podle dokumentace „souhrnný index za všechny oddíly“). Měsíc je ve sloupcích `rok` a `mesic`, hodnota v `hodnota`.
+  V sadě CEN0101E (formát DataStat) to jsou řádky `TYPUDAJE4A = IZ2015` (bazický index 2015 = 100),
+  `CZCOICOP2.CZCOP1 = 0` a prázdný `CZCOICOP2.CZCOP23` (úhrn), `EKAKTIOCDS = 0` (domácnosti celkem),
+  `UZ02P = CZ` (Česko) a `CASMKMQRM12` ve tvaru `RRRR-MM` (měsíc; kumulace `RRRR-MMK`, čtvrtletí a roky se
+  přeskočí). CEN0101E začíná lednem 2015; v překryvu 2015–2025 se s 010022-25 shoduje ve všech 132 měsících.
 - Bazický index ČSÚ zveřejňuje na jedno desetinné místo. Meziroční inflace spočtená z něj se proto
   od oficiálně zveřejněné může lišit o desetinu, u let kolem 2000 (nižší hladina indexu) až o 0,3 p. b.
 - Web čte jen soubor `data/cpi.json` ve tvaru `{ "RRRR-MM": index }`. ČSÚ z prohlížeče nikdy nevolá.

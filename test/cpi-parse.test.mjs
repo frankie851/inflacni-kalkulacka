@@ -109,3 +109,23 @@ test('validateSeries s maxAgeMonths hlásí zastaralá data', () => {
   assert.equal(validateSeries(v, { today, maxAgeMonths: 3 }).filter((e) => /zpět/.test(e)).length, 1);
   assert.deepEqual(validateSeries({ '1995-01': 1 }, { today: new Date('1995-03-01'), maxAgeMonths: 3 }), []);
 });
+
+test('skutečný formát DataStat CEN0101E (výřez): IZ2015, úhrn, Česko, domácnosti celkem, jen měsíce', async () => {
+  const rows = parseCsv(await readFile(new URL('./fixtures/csu-CEN0101E.csv', import.meta.url), 'utf8'));
+  const { base, values } = selectBaseIndex(rows);
+  assert.equal(base, '2015');
+  // Praha, důchodci, oddíl 01, kumulace (RRRR-MMK) a základ 2025 jsou vyřazeny
+  assert.deepEqual(values, { '2025-12': 155.2, '2026-01': 156.5 });
+  assert.equal(selectBaseIndex(rows, { preferBase: '2030' }).base, '2025');
+});
+
+test('combine: řada 010022 (1995–2025) + CEN0101E (2015–2026) se spojí bez změny hodnot', async () => {
+  const oldRows = parseCsv(await readFile(new URL('./fixtures/csu-010022-25.csv', import.meta.url), 'utf8'));
+  const newRows = parseCsv(await readFile(new URL('./fixtures/csu-CEN0101E.csv', import.meta.url), 'utf8'));
+  const out = combine([
+    { label: 'CEN0101E', ...selectBaseIndex(newRows) },
+    { label: '010022', ...selectBaseIndex(oldRows) },
+  ], () => {});
+  // fixture 010022 nemá rok 2015, combine proto nepřepočítává základ (obě řady jsou 2015 = 100)
+  assert.deepEqual(out, { '2024-11': 152.4, '2024-12': 152, '2025-11': 155.6, '2025-12': 155.2, '2026-01': 156.5 });
+});
