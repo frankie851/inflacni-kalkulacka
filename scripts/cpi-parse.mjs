@@ -76,8 +76,11 @@ export function selectBaseIndex(rows, { preferBase = '2015' } = {}) {
   if (!valCol) throw new Error(`Chybí sloupec "hodnota" (sloupce: ${cols.join(', ')})`);
   const typeCol = pick(cols, ['casz_kod']);
   const stapro = pick(cols, ['stapro_kod']);
-  const basketKod = pick(cols, ['ecoicop_kod', 'coicop_kod', 'coicop2018_kod', 'ecoicop2_kod']);
-  const basketTxt = pick(cols, ['ecoicop_txt', 'coicop_txt', 'coicop2018_txt', 'ecoicop2_txt']);
+  // skupina spotřebního koše; v 010022-25 je to ucel_kod (prázdný = souhrnný index za všechny oddíly)
+  const basketKod = pick(cols, ['ucel_kod', 'ecoicop_kod', 'coicop_kod', 'coicop2018_kod', 'ecoicop2_kod']);
+  const basketTxt = pick(cols, ['ucel_txt', 'ecoicop_txt', 'coicop_txt', 'coicop2018_txt', 'ecoicop2_txt']);
+  const bazOd = pick(cols, ['bazobdobiod']);
+  const bazDo = pick(cols, ['bazobdobido']);
   const uzemiKod = pick(cols, ['uzemi_kod']);
   const uzemiTxt = pick(cols, ['uzemi_txt']);
 
@@ -106,12 +109,19 @@ export function selectBaseIndex(rows, { preferBase = '2015' } = {}) {
     }
   }
 
-  // 5) základ (průměr RRRR = 100) – seskupit podle roku v textu
+  // 5) základ (průměr RRRR = 100): ze sloupců bazobdobiod/do (celý kalendářní rok), jinak z textu
   const byBase = new Map();
   for (const r of rowsCz) {
-    const t = rowText(r, cols);
-    const m = /(?:prumer|prum\.?)\s*(?:roku\s*)?(\d{4})\s*=\s*100/.exec(t) || /(\d{4})\s*=\s*100/.exec(t);
-    const base = m ? m[1] : null;
+    let base = null;
+    const od = bazOd ? /^(\d{4})-01-01/.exec(r[bazOd]) : null;
+    const dO = bazDo ? /^(\d{4})-12-31/.exec(r[bazDo]) : null;
+    if (od && dO && od[1] === dO[1]) base = od[1];
+    else if (bazOd && r[bazOd]) base = `${r[bazOd]}…${r[bazDo] ?? ''}`; // jiný základ (např. prosinec 2017)
+    else {
+      const t = rowText(r, cols);
+      const m = /(?:prumer|prum\.?)\s*(?:roku\s*)?(\d{4})\s*=\s*100/.exec(t) || /(\d{4})\s*=\s*100/.exec(t);
+      base = m ? m[1] : null;
+    }
     if (!byBase.has(base)) byBase.set(base, []);
     byBase.get(base).push(r);
   }
@@ -163,8 +173,11 @@ export function rebaseToYearAverage(values, year) {
   return sortMap(Object.fromEntries(Object.entries(values).map(([m, v]) => [m, Math.round((v / avg) * 10000) / 100])));
 }
 
-/** Ověří řadu: začátek, souvislost, kladné hodnoty, žádná budoucnost. Vrací seznam chyb. */
-export function validateSeries(values, { start = '1995-01', today = new Date() } = {}) {
+/**
+ * Ověří řadu: začátek, souvislost, kladné hodnoty, žádná budoucnost.
+ * S maxAgeMonths navíc hlídá, že poslední měsíc není starší než tolik měsíců. Vrací seznam chyb.
+ */
+export function validateSeries(values, { start = '1995-01', today = new Date(), maxAgeMonths = null } = {}) {
   const errors = [];
   const months = Object.keys(values).sort();
   if (months.length === 0) return ['Řada je prázdná'];
@@ -178,6 +191,9 @@ export function validateSeries(values, { start = '1995-01', today = new Date() }
   }
   const now = ordinalToMonth(today.getFullYear() * 12 + today.getMonth());
   if (months.at(-1) > now) errors.push(`Poslední měsíc ${months.at(-1)} je v budoucnosti`);
+  if (maxAgeMonths !== null && monthToOrdinal(now) - monthToOrdinal(months.at(-1)) > maxAgeMonths) {
+    errors.push(`Data končí ${months.at(-1)}, což je víc než ${maxAgeMonths} měsíce zpět – nejspíš chybí novější zdroj`);
+  }
   return errors;
 }
 
@@ -185,8 +201,12 @@ export function validateSeries(values, { start = '1995-01', today = new Date() }
 export function findCsvLinks(html, pageUrl) {
   const links = new Set();
   for (const m of html.matchAll(/href\s*=\s*["']([^"']+)["']/gi)) {
-    const href = m[1].replace(/&amp;/g, '&');
-    if (/\.csv(\?|#|$)/i.test(href) || /format=csv|[?&]type=csv/i.test(href)) {
+    const href = m[1]
+      .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+      .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
+      .replace(/&amp;/g, '&');
+    if (/\/schema\//i.test(href)) continue; // technické schéma, ne data
+    if (/\.csv(\?|#|$)/i.test(href) || /format=csv|[?&]type=csv/i.test(href) || /\/distribuce\/csv\/?$/i.test(href)) {
       links.add(new URL(href, pageUrl).href);
     }
   }

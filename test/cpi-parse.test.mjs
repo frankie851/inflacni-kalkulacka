@@ -77,10 +77,35 @@ test('validateSeries hlásí díry, špatný začátek a budoucnost', () => {
 });
 
 test('findCsvLinks najde odkazy na CSV', () => {
-  const html = '<a href="/docs/1/x/010022-25data.csv?version=1.0">CSV</a> <a href="a.pdf">x</a>'
+  const html = '<a href="/docs/1/x/010022-25data.csv?version&#x3D;1.0">CSV</a> <a href="a.pdf">x</a>'
     + '<a href="https://csu.gov.cz/x?format=csv&amp;y=1">data</a>';
   assert.deepEqual(findCsvLinks(html, 'https://csu.gov.cz/produkty/isc_cr'), [
     'https://csu.gov.cz/docs/1/x/010022-25data.csv?version=1.0',
     'https://csu.gov.cz/x?format=csv&y=1',
   ]);
+});
+
+test('skutečný formát ČSÚ 010022-25 (výřez): Z, prázdný ucel_kod, základ z bazobdobiod/do', async () => {
+  const rows = parseCsv(await readFile(new URL('./fixtures/csu-010022-25.csv', import.meta.url), 'utf8'));
+  const { base, values } = selectBaseIndex(rows);
+  assert.equal(base, '2015');
+  assert.deepEqual(values, { '2024-11': 152.4, '2024-12': 152, '2025-11': 155.6, '2025-12': 155.2 });
+  // meziroční změna z bazického indexu odpovídá oficiálnímu meziročnímu indexu (C = 102,1) v témže souboru
+  const official = rows.find((r) => r.casz_kod === 'C' && r.ucel_kod === '' && r.rok === '2025' && r.mesic === '12');
+  assert.equal(((values['2025-12'] / values['2024-12']) * 100).toFixed(1), parseNumber(official.hodnota).toFixed(1));
+});
+
+test('findCsvLinks: odkaz na distribuci data.csu.gov.cz ano, technické schéma ne', () => {
+  const html = '<a href="https://data.csu.gov.cz/opendata/sady/CEN0101E/distribuce/csv">Data (CSV)</a>'
+    + '<a href="https://data.csu.gov.cz/opendata/sady/CEN0101E/schema/csv">Technické schéma</a>';
+  assert.deepEqual(findCsvLinks(html, 'https://csu.gov.cz/produkty/isc_cr'), [
+    'https://data.csu.gov.cz/opendata/sady/CEN0101E/distribuce/csv',
+  ]);
+});
+
+test('validateSeries s maxAgeMonths hlásí zastaralá data', () => {
+  const today = new Date('2026-11-05');
+  const v = { '1995-01': 1 };
+  assert.equal(validateSeries(v, { today, maxAgeMonths: 3 }).filter((e) => /zpět/.test(e)).length, 1);
+  assert.deepEqual(validateSeries({ '1995-01': 1 }, { today: new Date('1995-03-01'), maxAgeMonths: 3 }), []);
 });

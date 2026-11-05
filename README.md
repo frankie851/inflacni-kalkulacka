@@ -13,10 +13,20 @@ Výpočet je orientační: index popisuje průměrný spotřební koš domácnos
 
 ## Data
 
-- Zdroj: ČSÚ, [Indexy spotřebitelských cen – inflace – časové řady](https://csu.gov.cz/produkty/isc_cr),
-  sekce Otevřená data (CSV), dokumentace datové sady 010022.
-- Použitá řada: **bazický index** (`casz_kod = Z`, ukazatel 6134) za **úhrn spotřebního koše**, ČR,
-  měsíčně, **průměr 2015 = 100**, od ledna 1995.
+- Zdroj: Český statistický úřad (ČSÚ), otevřená data:
+  - **1995–2025:** datová sada 010022-25 *Indexy spotřebitelských cen* ze stránky
+    [csu.gov.cz/produkty/indexy-spotrebitelskych-cen](https://csu.gov.cz/produkty/indexy-spotrebitelskych-cen)
+    (soubor `010022-25data011326.csv`, vydán 13. 1. 2026, dál se neaktualizuje;
+    [dokumentace](https://csu.gov.cz/docs/107508/5bc19b9e-1d32-50d4-8b7c-a3bcd4fbf4d2/010022-23dds.htm)).
+  - **od 2026:** sada CEN0101E *Indexy spotřebitelských cen podle klasifikace COICOP 2018* ze stránky
+    [csu.gov.cz/produkty/isc_cr](https://csu.gov.cz/produkty/isc_cr), sekce Otevřená data
+    (`https://data.csu.gov.cz/opendata/sady/CEN0101E/distribuce/csv`).
+- Použitá řada: **bazický index** za **úhrn spotřebního koše**, ČR, měsíčně, **průměr 2015 = 100**, od ledna 1995.
+  V souboru 010022-25 to jsou řádky `stapro_kod = 6134`, `casz_kod = Z` (bazický index),
+  `bazobdobiod = 2015-01-01` a `bazobdobido = 2015-12-31` (průměr roku 2015) a prázdný `ucel_kod`
+  (podle dokumentace „souhrnný index za všechny oddíly“). Měsíc je ve sloupcích `rok` a `mesic`, hodnota v `hodnota`.
+- Bazický index ČSÚ zveřejňuje na jedno desetinné místo. Meziroční inflace spočtená z něj se proto
+  od oficiálně zveřejněné může lišit o desetinu, u let kolem 2000 (nižší hladina indexu) až o 0,3 p. b.
 - Web čte jen soubor `data/cpi.json` ve tvaru `{ "RRRR-MM": index }`. ČSÚ z prohlížeče nikdy nevolá.
 
 ### Vzorce (`inflation.js`)
@@ -69,10 +79,13 @@ obvykle kolem 10.). Spustí `scripts/update-cpi.mjs`, pak testy, a když se data
 node scripts/update-cpi.mjs
 ```
 
-Skript načte stránku produktu ISC, najde na ní odkazy na CSV, z každého vybere bazický index za úhrn
-spotřebního koše a řady spojí. Vypíše použité soubory a sloupce, rozsah řady a dvě kontroly (průměr roku
+Skript načte obě stránky produktu ISC, najde na nich odkazy na CSV, z každého vybere bazický index
+za úhrn spotřebního koše a řady spojí (novější řadu naváže přes společné měsíce). Skončí chybou, když
+poslední měsíc je starší než 3 měsíce, aby se nepřehlédlo, že novější zdroj nejde zpracovat
+(`--allow-stale` to dočasně povolí). Vypíše použité soubory a sloupce, rozsah řady a dvě kontroly (průměr roku
 2015 ≈ 100 a meziroční inflaci za poslední měsíc, kterou můžete porovnat s tiskovou zprávou ČSÚ).
 Volba `--dry-run` nic nezapíše, `--url <adresa.csv>` použije konkrétní soubor.
+Za firemní proxy spusťte Node s `NODE_USE_ENV_PROXY=1` (Node 22.21+), aby `fetch` použil `HTTPS_PROXY`.
 
 ### Ručně ze staženého souboru (když automatické stažení nejde)
 

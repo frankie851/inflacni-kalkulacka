@@ -3,10 +3,11 @@
 // a uloží data/cpi.json ve tvaru { "RRRR-MM": index }, základ průměr 2015 = 100.
 //
 // Použití:
-//   node scripts/update-cpi.mjs                    # najde CSV na stránce produktu ISC a stáhne je
+//   node scripts/update-cpi.mjs                    # najde CSV na stránkách produktu ISC a stáhne je
 //   node scripts/update-cpi.mjs --url <csv> ...    # konkrétní CSV (lze opakovat)
 //   node scripts/update-cpi.mjs --file <csv> ...   # ručně stažený soubor (lze opakovat)
 //   node scripts/update-cpi.mjs --dry-run          # nic nezapisuje, jen vypíše souhrn
+//   node scripts/update-cpi.mjs --allow-stale      # povolí data starší než 3 měsíce
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -16,7 +17,12 @@ import {
   parseCsv, selectBaseIndex, chainSeries, rebaseToYearAverage, validateSeries, findCsvLinks, sortMap,
 } from './cpi-parse.mjs';
 
-export const PRODUCT_PAGE = 'https://csu.gov.cz/produkty/isc_cr';
+// Aktuální data (od 2026): sada CEN0101E na data.csu.gov.cz, odkaz je na stránce isc_cr.
+// Historie 1995–2025: datová sada 010022-25 (Veřejná databáze, od 2026 se neaktualizuje).
+export const PRODUCT_PAGES = [
+  'https://csu.gov.cz/produkty/isc_cr',
+  'https://csu.gov.cz/produkty/indexy-spotrebitelskych-cen',
+];
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const UA = 'inflacni-kalkulacka/1.0 (aktualizace dat)';
 
@@ -86,6 +92,7 @@ async function main() {
       url: { type: 'string', multiple: true, default: [] },
       out: { type: 'string', default: resolve(ROOT, 'data/cpi.json') },
       'dry-run': { type: 'boolean', default: false },
+      'allow-stale': { type: 'boolean', default: false },
     },
   });
   const log = (s) => console.log(s);
@@ -96,18 +103,23 @@ async function main() {
   }
   let urls = args.url;
   if (args.file.length === 0 && urls.length === 0) {
-    log(`Hledám CSV na ${PRODUCT_PAGE} …`);
-    const html = decode(await fetchWithRetry(PRODUCT_PAGE));
-    urls = findCsvLinks(html, PRODUCT_PAGE);
-    if (urls.length === 0) throw new Error(`Na ${PRODUCT_PAGE} jsem nenašel žádný odkaz na CSV`);
-    log(`Nalezeno ${urls.length} CSV.`);
+    urls = [];
+    for (const page of PRODUCT_PAGES) {
+      log(`Hledám CSV na ${page} …`);
+      const links = findCsvLinks(decode(await fetchWithRetry(page)), page);
+      log(`  nalezeno ${links.length}: ${links.join(', ') || '–'}`);
+      urls.push(...links.filter((u) => !urls.includes(u)));
+    }
+    if (urls.length === 0) throw new Error('Na stránkách ČSÚ jsem nenašel žádný odkaz na CSV');
   }
   for (const u of urls) {
-    found.push(trySeries(u, decode(await fetchWithRetry(u)), log));
+    let buf;
+    try { buf = await fetchWithRetry(u); } catch (err) { log(`  – ${err.message}`); continue; }
+    found.push(trySeries(u, decode(buf), log));
   }
 
   const values = combine(found.filter(Boolean), log);
-  const errors = validateSeries(values);
+  const errors = validateSeries(values, { maxAgeMonths: args['allow-stale'] ? null : 3 });
   if (errors.length) throw new Error(`Řada neprošla kontrolou:\n  ${errors.join('\n  ')}`);
 
   const months = Object.keys(values);
