@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Inflační kalkulačka</title>
+  <meta name="description" content="Kolik mají moje peníze dnes? Přepočet částky, reálný výnos a reálná mzda podle indexu spotřebitelských cen ČSÚ.">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M7 22l6-6 4 4 8-9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <h1>Inflační kalkulačka</h1>
+      <p class="lede">Kolik mají vaše peníze dnes? Výpočty podle indexu spotřebitelských cen ČSÚ.</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <p id="load-error" class="alert" role="alert" hidden></p>
+
+    <div class="tabs" role="tablist" aria-label="Nástroje">
+      <button role="tab" id="tab-convert" aria-controls="panel-convert" aria-selected="true">Přepočet částky</button>
+      <button role="tab" id="tab-return" aria-controls="panel-return" aria-selected="false" tabindex="-1">Reálný výnos</button>
+      <button role="tab" id="tab-wage" aria-controls="panel-wage" aria-selected="false" tabindex="-1">Reálná mzda</button>
+    </div>
+
+    <!-- 1. Přepočet částky -->
+    <section class="panel" role="tabpanel" id="panel-convert" aria-labelledby="tab-convert">
+      <form class="form" data-tool="convert" novalidate>
+        <label class="field">
+          <span>Částka (Kč)</span>
+          <input name="amount" type="text" inputmode="decimal" value="10 000" autocomplete="off">
+        </label>
+        <fieldset class="field month-field" data-month="from">
+          <legend>Z měsíce</legend>
+        </fieldset>
+        <button type="button" class="swap" data-swap aria-label="Prohodit měsíce (obrácený přepočet)" title="Prohodit měsíce">⇄</button>
+        <fieldset class="field month-field" data-month="to">
+          <legend>Na měsíc</legend>
+        </fieldset>
+      </form>
+      <div class="result" aria-live="polite">
+        <p class="result-value" data-out="value">–</p>
+        <p class="result-text" data-out="text"></p>
+        <p class="result-note" data-out="note" hidden></p>
+      </div>
+    </section>
+
+    <!-- 2. Reálný výnos -->
+    <section class="panel" role="tabpanel" id="panel-return" aria-labelledby="tab-return" hidden>
+      <form class="form" data-tool="return" novalidate>
+        <label class="field">
+          <span>Nominální výnos (%)</span>
+          <input name="rate" type="text" inputmode="decimal" value="4" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>Výnos je zadán</span>
+          <select name="rateType">
+            <option value="pa">ročně (p.a.)</option>
+            <option value="total">celkem za období</option>
+          </select>
+        </label>
+        <fieldset class="field month-field" data-month="from">
+          <legend>Od</legend>
+        </fieldset>
+        <fieldset class="field month-field" data-month="to">
+          <legend>Do</legend>
+        </fieldset>
+      </form>
+      <div class="result" aria-live="polite">
+        <p class="result-value" data-out="value">–</p>
+        <p class="result-text" data-out="text"></p>
+        <p class="result-note" data-out="note" hidden></p>
+      </div>
+    </section>
+
+    <!-- 3. Reálná mzda -->
+    <section class="panel" role="tabpanel" id="panel-wage" aria-labelledby="tab-wage" hidden>
+      <form class="form" data-tool="wage" novalidate>
+        <label class="field">
+          <span>Mzda dřív (Kč)</span>
+          <input name="wageThen" type="text" inputmode="decimal" value="30 000" autocomplete="off">
+        </label>
+        <fieldset class="field month-field" data-month="from">
+          <legend>Kdy</legend>
+        </fieldset>
+        <label class="field">
+          <span>Mzda dnes (Kč)</span>
+          <input name="wageNow" type="text" inputmode="decimal" value="45 000" autocomplete="off">
+        </label>
+        <fieldset class="field month-field" data-month="to">
+          <legend>Kdy</legend>
+        </fieldset>
+      </form>
+      <div class="result" aria-live="polite">
+        <p class="result-value" data-out="value">–</p>
+        <p class="result-text" data-out="text"></p>
+        <p class="result-note" data-out="note" hidden></p>
+      </div>
+    </section>
+
+    <section class="charts" aria-label="Grafy">
+      <figure class="chart-card">
+        <figcaption>
+          <h2>Cenová hladina</h2>
+          <p class="chart-sub" data-chart-sub="level">výchozí měsíc = 100</p>
+        </figcaption>
+        <div class="chart-box"><canvas id="chart-level" role="img" aria-label="Vývoj cenové hladiny za zvolené období"></canvas></div>
+      </figure>
+      <figure class="chart-card">
+        <figcaption>
+          <h2>Meziroční inflace</h2>
+          <p class="chart-sub" data-chart-sub="yoy">po měsících, v %</p>
+        </figcaption>
+        <div class="chart-box"><canvas id="chart-yoy" role="img" aria-label="Meziroční inflace po měsících za zvolené období"></canvas></div>
+      </figure>
+      <p id="chart-error" class="muted" hidden>Grafy se nepodařilo načíst (knihovna Chart.js není dostupná). Výpočty fungují i bez nich.</p>
+      <details class="table-view">
+        <summary>Zobrazit hodnoty v tabulce</summary>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th scope="col">Měsíc</th><th scope="col">Index (2015 = 100)</th><th scope="col">Hladina (začátek = 100)</th><th scope="col">Meziročně</th></tr></thead>
+            <tbody id="data-table"></tbody>
+          </table>
+        </div>
+      </details>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>Zdroj: <a href="https://csu.gov.cz/produkty/isc_cr">Český statistický úřad (ČSÚ)</a>, bazický index spotřebitelských cen, úhrn, průměr 2015 = 100.</p>
+      <p>Poslední data: <strong id="last-data">–</strong></p>
+      <p><strong>Orientační výpočet.</strong> Index popisuje průměrný spotřební koš, ne vaše osobní výdaje; nezohledňuje daně ani poplatky.</p>
+    </div>
+  </footer>
+</body>
+</html>
